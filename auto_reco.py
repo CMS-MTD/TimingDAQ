@@ -32,7 +32,7 @@ def exists_remote(host, path):
     raise Exception('SSH failed')
 
 def errorfile(run_number, error):
-    errorfile_handle = open("/home/daq/fnal_tb_18_11/ErrorLog/run_%d.txt" % run_number, "a+") 
+    errorfile_handle = open("/home/etl/Test_Stand/daq/fnal_tb_18_11/ErrorLog/run_%d.txt" % run_number, "a+") 
     errorfile_handle.write("Error.............." + error + "\n \n \n")
     errorfile_handle.close()
 
@@ -71,22 +71,22 @@ LastRunNumber = args.LastRunNumber
 ##################Hard Code these paths#####################
 
 if Digitizer == 'NetScopeStandalone':
-    RawLocalPath = '/home/daq/fnal_tb_18_11/LocalData/ROOT/'
-    RawLocalPath2 = '/home/daq/fnal_tb_18_11/ScopeMount/'
+    RawLocalPath = '/home/etl/Test_Stand/daq/fnal_tb_18_11/LocalData/ROOT/'
+    RawLocalPath2 = '/home/etl/Test_Stand/daq/fnal_tb_18_11/ScopeMount/'
 else:
-    RawLocalPath = '/home/daq/fnal_tb_18_11/' +  Digitizer + '/' 
-RecoLocalPath = '/home/daq/fnal_tb_18_11/LocalData/RECO/' + Digitizer + '/' + Version + '/'
+    RawLocalPath = '/home/etl/Test_Stand/daq/fnal_tb_18_11/' +  Digitizer + '/' 
+RecoLocalPath = '/home/etl/Test_Stand/daq/fnal_tb_18_11/LocalData/RECO/' + Digitizer + '/' + Version + '/'
 BaseTrackDirRulinux = '/data/TestBeam/2018_11_November_CMSTiming/'
-BaseTrackDirLocal = '/home/daq/fnal_tb_18_11/Tracks/'
+BaseTrackDirLocal = '/home/etl/Test_Stand/daq/fnal_tb_18_11/Tracks/'
 HyperscriptPath = '/home/otsdaq/CMSTiming/HyperScriptFastTrigger_NewGeo_18_12_11.sh'
-ConfigFilePath = '/home/daq/TimingDAQ/config/FNAL_TestBeam_1811/' + Digitizer + '_%s.config' % Version
-EnvSetupPath = '/home/daq/otsdaq/setup_ots.sh'
+ConfigFilePath = '/home/etl/Test_Stand/daq/TimingDAQ/config/FNAL_TestBeam_1811/' + Digitizer + '_%s.config' % Version
+EnvSetupPath = '/home/etl/Test_Stand/daq/otsdaq/setup_ots.sh'
 RulinuxSSH = 'otsdaq@rulinux04.dhcp.fnal.gov'
 LocalSSH = 'daq@timingdaq02.dhcp.fnal.gov'
-TimingDAQDir = '/home/daq/TimingDAQ/'
-ScopeRecoCMD1 = 'python /home/daq/fnal_tb_18_11/Tektronix_DPO7254Control/Reconstruction/conversion.py /home/daq/fnal_tb_18_11/ScopeMount/run_scope'
+TimingDAQDir = '/home/etl/Test_Stand/daq/TimingDAQ/'
+ScopeRecoCMD1 = 'python /home/etl/Test_Stand/daq/fnal_tb_18_11/Tektronix_DPO7254Control/Reconstruction/conversion.py /home/etl/Test_Stand/daq/fnal_tb_18_11/ScopeMount/run_scope'
 NextRunNumberFile = 'otsdaq_runNumber.txt' if ScopeNextRunNumberFrom == 1 else 'runNumber.txt'  
-ScopeNextRunNumberPath = '/home/daq/fnal_tb_18_11/Tektronix_DPO7254Control/RunOscilloscope/' + NextRunNumberFile
+ScopeNextRunNumberPath = '/home/etl/Test_Stand/daq/fnal_tb_18_11/Tektronix_DPO7254Control/RunOscilloscope/' + NextRunNumberFile
 
 
 
@@ -334,7 +334,7 @@ if Digitizer == 'DT5742' or Digitizer == 'VME':
 
                                 if Digitizer == 'NetScopeStandalone':
                                     dattoroot_cmd = dattoroot_cmd + ' --input_file=' + abs_raw_file_path
-                                    reco_cmd1 = 'python /home/daq/fnal_tb_18_11/Tektronix_DPO7254Control/Reconstruction/run_conversion.py -r %d' % RunNumber
+                                    reco_cmd1 = 'python /home/etl/Test_Stand/daq/fnal_tb_18_11/Tektronix_DPO7254Control/Reconstruction/run_conversion.py -r %d' % RunNumber
                                     session1 = subprocess.Popen(reco_cmd1,stdout=PIPE, stderr=PIPE, shell=True)
                                     stdout, stderr = session1.communicate()
                                     if stderr:

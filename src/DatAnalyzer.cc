@@ -132,8 +132,10 @@ void DatAnalyzer::Analyze(){
     //************************************************************************************
     //If the minimum point is the first sample, then the channel is bad, and we skip it.
     //************************************************************************************
-    if (idx_min == 0) continue;
-
+    if (idx_min == 0) {
+      cout << "Skipping bad event "<< endl; 
+      continue;
+    }
     var["t_peak"][i] = time[GetTimeIndex(i)][idx_min];
     var["amp"][i] = -amp;
 
@@ -270,8 +272,8 @@ void DatAnalyzer::Analyze(){
         unsigned int i_max = GetIdxFirstCross(config->channels[i].re_bounds[1]*amp, channel[i], i_min  , +1);
         float t_min = time[GetTimeIndex(i)][i_min];
         float t_max = time[GetTimeIndex(i)][i_max];
-        // cout<<i_min<<"  -----------  "<<i_max<<endl;
-        // cout<<t_min<<"  -----------  "<<t_max<<endl;
+        // cout<< "i_min " << i_min<< " i_max " <<i_max <<endl;
+        // cout<< "t_max " << t_min<< " t_max " <<t_max <<endl;
         // cout<<"==========================================="<<endl;
 
         TF1* flinear = new TF1("flinear"+name, "[0]*x+[1]", t_min, t_max);
@@ -294,28 +296,28 @@ void DatAnalyzer::Analyze(){
         for ( auto thr : config->constant_threshold ) {
             var[Form("linear_RE__%dmV", (int)(fabs(thr)))][i] = (thr-Re_b)/Re_slope + myTimeOffset;
         }
-        // cout<<"==========================================="<<endl;
+        //cout<<"==========================================="<<endl;
 
         // if (i_evt > 0 && i_evt < 10) { // Plotting the clock and the fitted line.
-        // TCanvas * c = new TCanvas(Form("fit_results%d", i_evt), Form("fit_results%d", i_evt));
+        TCanvas * c = new TCanvas(Form("fit_results%d", i_evt), Form("fit_results%d", i_evt));
         // pulse->Draw(Form("channels[%d]:time", i), Form("event==%d", i_evt));
-        // const int bins = NUM_SAMPLES; // round(sizeof(channel[i])/sizeof(int));
-        // if (var[Form("linear_RE_%d", (int)(100*0.2))][i] == 0) {
-        //     cout<<"Clock time stamp is 0: "<<0.2*amp<<"     "<<Re_b<<endl;
-        // }
+        const int bins = NUM_SAMPLES; // round(sizeof(channel[i])/sizeof(int));
+        if (var[Form("linear_RE_%d", (int)(100*0.2))][i] == 0) {
+            cout<<"Clock time stamp is 0: "<<0.2*amp<<"     "<<Re_b<<endl;
+        }
         // cout<<t_min<<"     "<<t_max<<"     "<<bins<<endl;
 
-        // float line[bins] = {};
-        // float t = t_min;
-        // float time_array[bins] = {};
+        float line[bins] = {};
+        float t = t_min;
+        float time_array[bins] = {};
         // float clock_waveform[bins] = {};
-        // for (int b = 0; b < bins; b++) {
-        //     t += b*(t_max - t_min)/bins;
-        //     time_array[b] = t;
-        //     line[b] = Re_slope * t + Re_b;
-        //     // clock_waveform[b] = channel[i][b]
-        //     // cout<<t<<"         "<<line[b]<<endl;
-        // }
+        for (int b = 0; b < bins; b++) {
+            t += b*(t_max - t_min)/bins;
+            time_array[b] = t;
+            line[b] = Re_slope * t + Re_b;
+            // clock_waveform[b] = channel[i][b]
+            // cout<<t<<"         "<<line[b]<<endl;
+        }
         // [GetTimeIndex(i)]
         // for (int k =0; k<bins; k++) {
         //     cout<<k<<")     "<<typeid(time[k]).name()<<"     "<<typeid(channel[k]).name()<<endl;
@@ -332,7 +334,7 @@ void DatAnalyzer::Analyze(){
         // clock_plot->Draw("");
         // line_plot->Draw("same");
 
-        // c->SaveAs(Form("/home/daq/ETROC2_Test_Stand/module_test_sw/analysis/FIT_PLOTS_TEST/fit_results%d.png", i_evt));
+        // c->SaveAs(Form("/home/etl/Test_Stand/ETROC2_Test_Stand/FIT_PLOTS_TEST/fit_results%d.png", i_evt));
         // delete clock_plot;
         // delete line_plot;
         // delete c;
