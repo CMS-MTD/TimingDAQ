@@ -171,10 +171,10 @@ void NetScopeStandaloneAnalyzer::Analyze(){
     nClustersStripsY=0;
     nClustersStripsX=0;
     nStripsWith2Clusters=0;
-
-    while (idx_px_tree < entries_px_tree && i_evt >= (pixel_event->trigger+0)) {
+    int shift = 0;
+    while (idx_px_tree < entries_px_tree && i_evt >= (pixel_event->trigger+shift)) {
       pixel_tree->GetEntry(idx_px_tree);
-      if ((pixel_event->trigger+0) == i_evt) {
+      if ((pixel_event->trigger+shift) == i_evt) {
         if(ntracks == 0) {
           xIntercept = 1e-3*pixel_event->xIntercept; //um to mm
           yIntercept = 1e-3*pixel_event->yIntercept;
@@ -205,7 +205,7 @@ void NetScopeStandaloneAnalyzer::Analyze(){
       	ntracks++;
         idx_px_tree++;
       }
-      else if (i_evt > (pixel_event->trigger+0)) {
+      else if (i_evt > (pixel_event->trigger+shift)) {
         cout << "[ERROR] Pixel tree not ordered" << endl;
         exit(0);
       }
