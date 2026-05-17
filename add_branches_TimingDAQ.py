@@ -35,10 +35,10 @@ def processRun(runNumber,outfileName,infoDict):
     v_col = vector('int')()
     v_slot = vector('int')()
     v_sensorsHV = vector('string')()
-    v_HVs = vector('int')()
-
+    v_HVs = vector('float')()
+    MAXCHANNEL = 16
     #### Fill vectors from Lecroy config
-    for ichan in range(8): 
+    for ichan in range(MAXCHANNEL): 
         key = 'Sensor Ch%i' % ichan  ### Loop over sensor names in airtable Lecroy config
         if key in infoDict: 
             v_sensors.push_back(infoDict[key])
@@ -49,12 +49,12 @@ def processRun(runNumber,outfileName,infoDict):
             v_sensors.push_back("Empty")
             v_slot.push_back(-1)
 
-    for ichan in range(8):
+    for ichan in range(MAXCHANNEL):
         key = 'CH%i MUX' % ichan
         if key in infoDict: v_mux.push_back(infoDict[key])
         else: v_mux.push_back("Not set")
 
-    for ichan in range(8):
+    for ichan in range(MAXCHANNEL):
         key = 'Ch %i' % ichan ### ### Loop over sensor pad number in airtable Lecroy config
         if key in infoDict: 
             v_pads.push_back(infoDict[key])
@@ -67,7 +67,7 @@ def processRun(runNumber,outfileName,infoDict):
             v_col.push_back(-1)
 
     #### Fill vectors from CAEN config
-    for iHV in range(8):
+    for iHV in range(MAXCHANNEL):
         key = 'Sensor HV%i' % iHV  ### Loop over sensor names in airtable CAEN config
         if key in infoDict: v_sensorsHV.push_back(infoDict[key])
 
