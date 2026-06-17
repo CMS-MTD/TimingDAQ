@@ -171,7 +171,7 @@ void NetScopeStandaloneAnalyzer::Analyze(){
     nClustersStripsY=0;
     nClustersStripsX=0;
     nStripsWith2Clusters=0;
-    int shift = 0;
+    int shift = 2;
     while (idx_px_tree < entries_px_tree && i_evt >= (pixel_event->trigger+shift)) {
       pixel_tree->GetEntry(idx_px_tree);
       if ((pixel_event->trigger+shift) == i_evt) {
