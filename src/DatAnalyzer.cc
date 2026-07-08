@@ -32,6 +32,10 @@ void DatAnalyzer::Analyze(){
   LOOP OVER CHANNELS
   **************************************/
   for(unsigned int i=0; i<NUM_CHANNELS; i++) {
+    //added for debugging
+    // if (i!=3){
+    //   continue;
+    // }
     ResetVar(i);
     if ( !config->hasChannel(i) ) {
       continue;
@@ -121,7 +125,8 @@ void DatAnalyzer::Analyze(){
 
       if(( range_check && max_check) || j == bl_st_idx+bl_length) {
       // if(( j>bl_st_idx+bl_length && j<(int)(0.9*NUM_SAMPLES) && fabs(channel[i][j]) > fabs(amp)) || j == bl_st_idx+bl_length) {
-        idx_min = j;
+      //cout<<"defining idx min"<<endl;  
+      idx_min = j;
         amp = channel[i][j];
       }
     }
@@ -132,8 +137,9 @@ void DatAnalyzer::Analyze(){
     //************************************************************************************
     //If the minimum point is the first sample, then the channel is bad, and we skip it.
     //************************************************************************************
+    
     if (idx_min == 0) continue;
-
+    
     var["t_peak"][i] = time[GetTimeIndex(i)][idx_min];
     var["amp"][i] = -amp;
 
@@ -155,6 +161,7 @@ void DatAnalyzer::Analyze(){
     unsigned int j_90_pre = 0, j_10_pre = 0;
     unsigned int j_90_post = 0, j_10_post = 0;
     unsigned int j_area_pre = 0, j_area_post = 0;
+    unsigned int j_70_pre = 0;
     vector<float*> coeff_poly_fit;
     vector<pair<int, int>> poly_bounds;
     float Re_b, Re_slope;
@@ -211,6 +218,7 @@ void DatAnalyzer::Analyze(){
       float* coeff;
 
       j_90_pre = GetIdxFirstCross(amp*0.9, channel[i], j_10_pre, +1);
+      j_70_pre = GetIdxFirstCross(amp*0.9, channel[i], j_10_pre, +1);
       AnalyticalPolinomialSolver(j_90_pre-j_10_pre+1, &(time[GetTimeIndex(i)][j_10_pre]), &(channel[i][j_10_pre]), 1, coeff);
       var["risetime"][i] = coeff[1];
       delete [] coeff;
@@ -345,12 +353,66 @@ void DatAnalyzer::Analyze(){
       // -------------- Local polinomial fit
       **************************************/
       if ( config->constant_fraction.size() ) {
+        //cout<<"in if"<<endl;
+        //cout<<"in poly fit constant fraction"<<endl;
         float start_level =  - 3 * baseline_RMS;
+        //cout<<"idx min"<<idx_min<<endl;
         unsigned int j_start =  GetIdxFirstCross( start_level, channel[i], idx_min, -1);
+        //cout<<"start level"<<start_level<<endl;
+         // Added by Alex to account for double peak structure
+        // Always look at the first peak, and take that as your "amp"
+        //cout<<"in if for finding new amp"<<endl;
+        float diff = 0; bool one_increase=false;
+        float first_amp = amp; int new_idx = 0;
+        float max_amp_value = 0; bool changed_max=false;
+            int local_min_window_one_side = 15;
+            //cout<<"starting value"<<abs(channel[i][j_start])<<endl;
+            for (int idx=0; idx<1000000; idx++){
+                //cout<<"in loop"<<endl;
+                //I'm not sure exact range, but loop will always break at amplitude itself
+                //cout<<channel[i][idx]<<endl;
+                if (abs(channel[i][idx])<abs(amp*0.3)){
+                continue;
+                }
+                if (abs(channel[i][idx])<max_amp_value){
+                continue;
+                }
+                max_amp_value = abs(channel[i][idx]);
+                if (abs(channel[i][idx])>=abs(amp)){
+                  //cout<<"breaking"<<endl;
+                  first_amp=amp;
+                  new_idx = idx;
+                  //changed_max = true;
+                  break;
+                }
 
+                int channels_less_than_counter_right = 0; 
+                bool found_local_min=true;   
+                for (int j=1; j<=local_min_window_one_side; j++){
+                    if ((abs(channel[i][idx]) < abs(channel[i][idx+j])) || (abs(channel[i][idx]) < abs(channel[i][idx-j]))){
+                        found_local_min=false;
+                        break;
+                    }
+                    
+
+                }
+                if (found_local_min){
+                    //cout<<"found local min"<<endl;
+                    first_amp=channel[i][idx];
+                    new_idx = idx;
+                    break;
+                }
+                
+        }
+
+             
+       //cout<<new_idx<<endl;
+       //cout<<first_amp<<endl;
         for(auto f : config->constant_fraction) {
+          //cout<<"fraction"<<f<<endl;
           unsigned int j_st = j_start;
           if ( amp*f > start_level ) {
+            //cout<<"baseline if"<<endl;
             if ( amp*f > -baseline_RMS && verbose) {
               if(N_warnings< N_warnings_to_print) {
                 N_warnings++;
@@ -361,16 +423,29 @@ void DatAnalyzer::Analyze(){
                 cout << "[WARNING] Max number of warnings passed. No more warnings will be printed." << endl;;
               }
             }
-            j_st =  GetIdxFirstCross( amp*f, channel[i], idx_min, -1);
-          }
-
+            
+              
+              }
+              if (amp!=first_amp){
+                //cout<<"amp"<<amp<<endl;
+                //cout<<"new amp"<<first_amp<<endl;
+              }
+              
+              amp=first_amp;
+              idx_min = new_idx;
+              j_st =  GetIdxFirstCross( amp*f, channel[i], idx_min, -1);
+              //cout<<j_st<<" "<<(time[GetTimeIndex(i)][j_st])<<endl;
+          
+          
           unsigned int j_close = GetIdxFirstCross(amp*f, channel[i], j_st, +1);
+          //cout<<j_close<<" "<<channel[i][j_close]<<endl;
           if ( fabs(channel[i][j_close-1] - f*amp) < fabs(channel[i][j_close] - f*amp) ) j_close--;
 
           if( config->channels[i].algorithm.Contains("IL")) {
+            
             unsigned int j_aux = j_close + 1;
             if ( fabs(channel[i][j_close-1] - f*amp) < fabs(channel[i][j_close+1] - f*amp) ) j_aux -= 2;
-
+            
             float t1 = time[GetTimeIndex(i)][j_close];
             float v1 = channel[i][j_close];
             float t2 = time[GetTimeIndex(i)][j_aux];
@@ -426,13 +501,16 @@ void DatAnalyzer::Analyze(){
           }
 
           for(auto n : config->channels[i].PL_deg) {
+            //cout<<"in if statement"<<endl;
             unsigned int span_j = (int) (min( j_90_pre-j_close , j_close-j_st)/1.5);
 
             if (j_90_pre - j_10_pre <= 3*n) {
+              //cout<<"in if"<<endl;
               span_j = max((unsigned int)(n*0.5), span_j);
               span_j = max((unsigned int)1, span_j);
             }
             else {
+              //cout<<"in else"<<endl;
               span_j = max((unsigned int) n, span_j);
             }
 
@@ -446,10 +524,31 @@ void DatAnalyzer::Analyze(){
             if (span_j + N_add + j_close < j_90_pre) {
               N_add++;
             }
-            AnalyticalPolinomialSolver( 2*span_j + N_add , &(channel[i][j_close - span_j]), &(time[GetTimeIndex(i)][j_close - span_j]), n, coeff);
-
+            //cout<<span_j<<endl;
+            //cout<<j_close<<endl;
+            //cout<<j_close-span_j<<endl;
+            //cout<<channel[i][j_close-span_j]<<endl;
+            //cout<<j_close+span_j+N_add<<endl;
+            //cout<<channel[i][j_close+span_j+N_add]<<endl;
+            //cout<<(time[GetTimeIndex(i)][j_close - span_j])<<endl;
+            //cout<<2*span_j + N_add<<endl;
+            
+            //commented out by Alex for now, just fit from start_idx to the new amp
+            
+            //if (changed_max){
+            if (new_idx > j_start && new_idx < NUM_SAMPLES && j_start < NUM_SAMPLES && (new_idx - j_start + 1) >= (n + 1)){
+              AnalyticalPolinomialSolver( new_idx-j_start+1 , &(channel[i][j_start]), &(time[GetTimeIndex(i)][j_start]), n, coeff);
+            } //use adjusted fitted range with whole edge, ending at new max
+            else{
+              AnalyticalPolinomialSolver( 2*span_j + N_add , &(channel[i][j_close - span_j]), &(time[GetTimeIndex(i)][j_close - span_j]), n, coeff);
+            }
             var[Form("LP%d_%d", n, (int)(100*f))][i] = PolyEval(f*amp, coeff, n) + myTimeOffset;
-
+            //cout<<"new_idx"<<new_idx<<endl;
+            var["amp_first_peak"][i] = -1*amp;
+            var["t_first_peak"][i] = time[GetTimeIndex(i)][new_idx];
+            var["peak_delay"][i] = var["t_peak"][i] - var["t_first_peak"][i];
+            var["peak_ratio"][i] = (var["amp_first_peak"][i])/(var["amp"][i]);
+            //cout<<(PolyEval(f*amp, coeff, n) + myTimeOffset)*1e9<<endl;
             if(draw_debug_pulses) {
               coeff_poly_fit.push_back(coeff);
               poly_bounds.push_back(pair<int,int>(j_close-span_j, j_close+span_j+N_add-1));
@@ -459,6 +558,7 @@ void DatAnalyzer::Analyze(){
         }
       }
       if ( config->constant_threshold.size() ) {
+        //cout<<"in poly fit constant threshold"<<endl;
         float start_level =  - 3 * baseline_RMS;
         unsigned int j_start =  GetIdxFirstCross( start_level, channel[i], idx_min, -1);
 
@@ -566,7 +666,7 @@ void DatAnalyzer::Analyze(){
               N_add++;
             }
             AnalyticalPolinomialSolver( 2*span_j + N_add , &(channel[i][j_close - span_j]), &(time[GetTimeIndex(i)][j_close - span_j]), n, coeff);
-
+            
             var[Form("LP%d_%dmV", n, (int)(fabs(thr)))][i] = PolyEval(thr, coeff, n) + myTimeOffset;
 
             if(draw_debug_pulses) {
@@ -699,6 +799,7 @@ void DatAnalyzer::Analyze(){
       // Draw constant threshold lines
       line_lvs->SetLineColor(28);
       for(auto thr : config->constant_threshold) {
+        cout<<thr<<endl;
         line_lvs->DrawLine(time[GetTimeIndex(i)][0], thr, time[GetTimeIndex(i)][NUM_SAMPLES-1], thr);
       }
 
@@ -794,6 +895,12 @@ void DatAnalyzer::Analyze(){
 
         for( unsigned int kk = 0; kk < config->constant_fraction.size(); kk++) {
           float f = config->constant_fraction[kk];
+          //cout<<f<<endl;
+          if (kk!=config->constant_fraction.size()-1){
+            //cout<<f<<endl;
+            continue;
+          }
+          //cout<<"plotted"<<endl;
           line_lvs->SetLineColor(frac_colors[kk]);
           line_lvs->DrawLine(amp*f, time[GetTimeIndex(i)][j_begin], amp*f, time[GetTimeIndex(i)][j_90_pre + 3]);
           for(auto n : config->channels[i].PL_deg) {
@@ -813,6 +920,7 @@ void DatAnalyzer::Analyze(){
         }
 
         for( unsigned int kk = 0; kk < config->constant_threshold.size(); kk++) {
+          continue;
           float thr = config->constant_threshold[kk];
           if (thr < amp ) continue;
           line_lvs->SetLineColor(frac_colors[kk + config->constant_fraction.size()]);
@@ -885,8 +993,14 @@ void DatAnalyzer::RunEventsLoop() {
     unsigned int N_written_evts = 0;
     if ( bin_file != NULL )
     {
+      
       auto last_displaced_time = std::time(0);
       for( i_evt = 0; !feof(bin_file) && (N_evts==0 || i_evt<N_evts); i_evt++){
+        //cout<<"at event now event: "<<i_evt<<endl;
+        //just to see one event
+        //if (i_evt!=414){
+        //  continue;
+        //}
         if (verbose || (i_evt % 100 == 0 && std::time(0) - last_displaced_time > 3) || i_evt == 0) {
           last_displaced_time = std::time(0);
           cerr << "Processing Event " << i_evt << "\n";
@@ -913,6 +1027,16 @@ void DatAnalyzer::RunEventsLoop() {
       int n_evt_tree = tree_in->GetEntries();
       std::cout << "NNNN: " << n_evt_tree << std::endl;
       for(int i_aux = start_evt; i_aux < n_evt_tree && (N_evts==0 || i_aux<N_evts); i_aux++){
+        //just to see one event
+        //if (!(i_aux==1954 || i_aux==1633 || i_aux==414)){
+        // if(!(i_aux==414||i_aux==1633||i_aux==1954||i_aux==2273||i_aux==3258||i_aux==4465||i_aux==4466||i_aux==5817||i_aux==3203)){
+        //   continue;
+        // }
+        //}
+        // if (!(i_aux==3203)){
+        //   continue;
+        // }
+        //cout<<"at correct event: "<<i_aux<<endl;
         if (i_aux % 500 == 0) cout << "Processing Event " << i_aux << "\n";
         GetChannelsMeasurement( i_aux );
         Analyze();

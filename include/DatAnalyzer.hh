@@ -151,7 +151,12 @@ class DatAnalyzer {
           "integral",
           "intfull",
           "risetime",
-          "decaytime"
+          "decaytime",
+          //added by Alex to study events with multiple pulses
+          "amp_first_peak",
+          "t_first_peak",
+          "peak_delay",
+          "peak_ratio",
         };
 };
 
