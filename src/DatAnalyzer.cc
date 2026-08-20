@@ -133,7 +133,6 @@ void DatAnalyzer::Analyze(){
 
     //std::cout << "amp: " << amp << std::endl;
     if(config->channels[i].algorithm.Contains("HNR")) {delete f;}
-
     //************************************************************************************
     //If the minimum point is the first sample, then the channel is bad, and we skip it.
     //************************************************************************************
@@ -141,6 +140,8 @@ void DatAnalyzer::Analyze(){
     if (idx_min == 0) continue;
     
     var["t_peak"][i] = time[GetTimeIndex(i)][idx_min];
+    //save index of max amp for later
+    int point_of_peak = idx_min;
     var["amp"][i] = -amp;
 
     float baseline_RMS = 0;
@@ -172,6 +173,7 @@ void DatAnalyzer::Analyze(){
     fittable *= fabs(channel[i][idx_min-1]) > 4*baseline_RMS;
     fittable *= fabs(channel[i][idx_min+2]) > 3*baseline_RMS;
     fittable *= fabs(channel[i][idx_min-2]) > 3*baseline_RMS;
+    var["intfull"][i] = GetPulseIntegral(channel[i], time[GetTimeIndex(i)], 5, NUM_SAMPLES-5); //added here so it is always computed
     // fittable *= fabs(channel[i][idx_min+3]) > 2*baseline_RMS;
     // fittable *= fabs(channel[i][idx_min-3]) > 2*baseline_RMS;
     
@@ -212,7 +214,8 @@ void DatAnalyzer::Analyze(){
       j_area_pre = GetIdxFirstCross(amp*0.05, channel[i], idx_min, -1);
       j_area_post = GetIdxFirstCross(0. , channel[i], idx_min, +1);
       var["integral"][i] = GetPulseIntegral(channel[i], time[GetTimeIndex(i)], j_area_pre, j_area_post);
-      var["intfull"][i] = GetPulseIntegral(channel[i], time[GetTimeIndex(i)], 5, NUM_SAMPLES-5);
+      var["integral_to_peak"][i] = GetPulseIntegral(channel[i], time[GetTimeIndex(i)], j_area_pre, point_of_peak);
+      //var["intfull"][i] = GetPulseIntegral(channel[i], time[GetTimeIndex(i)], 5, NUM_SAMPLES-5);
 
       // -------------- Compute rise and falling time
       float* coeff;

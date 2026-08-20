@@ -149,6 +149,8 @@ class DatAnalyzer {
           "amp",
           "t_peak",
           "integral",
+          "integral_to_peak",
+          "integral_to_end",
           "intfull",
           "risetime",
           "decaytime",

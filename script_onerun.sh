@@ -12,7 +12,7 @@ chmod 755 add_branches_TimingDAQ.py
 #mkdir scope${ScopeNum}
 cd scope${ScopeNum}
 #cp ../converted_run$1.root .
-for i in {800..800}; do
+for i in {5024..5024}; do
     cp /eos/uscms/store/group/cmstestbeam/2026_05_SNSPD/LecroyScope/RecoData/ConversionRECO/Scope$3/converted_run$i.root .
     cp /eos/uscms/store/group/cmstestbeam/2026_05_SNSPD/Tracks/RecoData/v$2/Run${i}_CMSTiming_FastTriggerStream_converted.root .
     #cp /eos/uscms//store/group/cmstestbeam/${BASE}//ConfigInfo/Runs/info_$1.json .
@@ -23,7 +23,7 @@ for i in {800..800}; do
     #ls
     #eosmkdir /store/group/cmstestbeam/${BASE}/LecroyScope/RecoData/TimingDAQRECO/RecoWithTracks/$2/Scope${ScopeNum}/
     #xrdcp -fs out_run$1_info.root root://cmseos.fnal.gov//store/group/cmstestbeam/${BASE}/LecroyScope/RecoData/TimingDAQRECO/RecoWithTracks/$2/Scope${ScopeNum}/run$1_info.root
-    #rm converted_run$i.root
+    rm converted_run$i.root
     rm info_$i.json
     date
 done
