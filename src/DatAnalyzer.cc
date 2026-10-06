@@ -33,7 +33,7 @@ void DatAnalyzer::Analyze(){
   **************************************/
   for(unsigned int i=0; i<NUM_CHANNELS; i++) {
     //added for debugging
-    // if (i!=3){
+    // if (i!=7 && i!=0){
     //   continue;
     // }
     ResetVar(i);
@@ -165,6 +165,9 @@ void DatAnalyzer::Analyze(){
     unsigned int j_70_pre = 0;
     vector<float*> coeff_poly_fit;
     vector<pair<int, int>> poly_bounds;
+    vector<pair<int, int>> poly_view_bounds;
+    vector<int> poly_degrees;
+    vector<TString> poly_labels;
     float Re_b, Re_slope;
     bool fittable = true;
     fittable *= idx_min < (int)(NUM_SAMPLES*0.8);
@@ -538,9 +541,15 @@ void DatAnalyzer::Analyze(){
             
             //commented out by Alex for now, just fit from start_idx to the new amp
             
+            unsigned int fit_first = j_close - span_j;
+            unsigned int fit_last = j_close + span_j + N_add - 1;
+            bool used_full_edge = false;
             //if (changed_max){
             if (new_idx > j_start && new_idx < NUM_SAMPLES && j_start < NUM_SAMPLES && (new_idx - j_start + 1) >= (n + 1)){
               AnalyticalPolinomialSolver( new_idx-j_start+1 , &(channel[i][j_start]), &(time[GetTimeIndex(i)][j_start]), n, coeff);
+              fit_first = j_start;
+              fit_last = new_idx;
+              used_full_edge = true;
             } //use adjusted fitted range with whole edge, ending at new max
             else{
               AnalyticalPolinomialSolver( 2*span_j + N_add , &(channel[i][j_close - span_j]), &(time[GetTimeIndex(i)][j_close - span_j]), n, coeff);
@@ -553,10 +562,57 @@ void DatAnalyzer::Analyze(){
             var["peak_ratio"][i] = (var["amp_first_peak"][i])/(var["amp"][i]);
             //cout<<(PolyEval(f*amp, coeff, n) + myTimeOffset)*1e9<<endl;
             if(draw_debug_pulses) {
-              coeff_poly_fit.push_back(coeff);
-              poly_bounds.push_back(pair<int,int>(j_close-span_j, j_close+span_j+N_add-1));
+              // Every fraction normally reuses the same full-edge polynomial.
+              // Store identical fits only once; drawing every percentage made
+              // debug canvases unnecessarily large and very slow to render.
+              bool fit_already_saved = false;
+              for (unsigned int saved = 0; saved < coeff_poly_fit.size(); saved++) {
+                if (poly_degrees[saved] == n &&
+                    poly_bounds[saved].first == fit_first &&
+                    poly_bounds[saved].second == fit_last) {
+                  fit_already_saved = true;
+                  break;
+                }
+              }
+              if (fit_already_saved) {
+                delete [] coeff;
+              }
+              else {
+                coeff_poly_fit.push_back(coeff);
+                poly_bounds.push_back(pair<int,int>(fit_first, fit_last));
+                poly_view_bounds.push_back(pair<int,int>(
+                  fit_first >= 10 ? fit_first - 10 : 0,
+                  min(fit_last + 3, NUM_SAMPLES - 1)));
+                poly_degrees.push_back(n);
+                poly_labels.push_back(used_full_edge ?
+                  Form("LP%d full rising-edge fit", n) :
+                  Form("LP%d local fit at %d%%", n, (int)(100*f)));
+              }
             }
             else delete [] coeff;
+          }
+        }
+
+        // Debug-only comparison fits: use the original five-sample core
+        // beginning at the -3*RMS edge start, plus two samples on either side.
+        // These coefficients are only plotted over those nine samples and are
+        // not stored in the tree.
+        if (draw_debug_pulses && j_start >= 2 && j_start + 6 < NUM_SAMPLES &&
+            new_idx > (int)j_start) {
+          const unsigned int debug_fit_first = j_start - 2;
+          const unsigned int debug_fit_last = j_start + 6;
+          for (int degree = 1; degree <= 3; degree++) {
+            float* debug_fit_coeff;
+            AnalyticalPolinomialSolver(9, &(channel[i][debug_fit_first]),
+                                        &(time[GetTimeIndex(i)][debug_fit_first]),
+                                        degree, debug_fit_coeff);
+            coeff_poly_fit.push_back(debug_fit_coeff);
+            poly_bounds.push_back(pair<int,int>(debug_fit_first, debug_fit_last));
+            poly_view_bounds.push_back(pair<int,int>(
+              debug_fit_first >= 14 ? debug_fit_first - 14 : 0,
+              min(debug_fit_last + 4, NUM_SAMPLES - 1)));
+            poly_degrees.push_back(degree);
+            poly_labels.push_back(Form("LP%d 5 edge points + 2 on each side", degree));
           }
         }
       }
@@ -582,8 +638,25 @@ void DatAnalyzer::Analyze(){
             j_st =  GetIdxFirstCross( thr, channel[i], idx_min, -1);
           }
 
-          unsigned int j_close = GetIdxFirstCross(thr, channel[i], j_st, +1);
-          if ( fabs(channel[i][j_close-1] - thr) < fabs(channel[i][j_close] - thr) ) j_close--;
+          unsigned int j_cross = GetIdxFirstCross(thr, channel[i], j_st, +1);
+          unsigned int j_close = j_cross;
+          if (j_close > 0 &&
+              fabs(channel[i][j_close-1] - thr) <
+              fabs(channel[i][j_close] - thr)) j_close--;
+
+          // Preserve a fit-independent estimate of the actual crossing. This
+          // is used as the LP fallback when too few monotonic samples exist.
+          float threshold_crossing_time = time[GetTimeIndex(i)][j_cross];
+          if (j_cross > 0) {
+            const float t_before = time[GetTimeIndex(i)][j_cross-1];
+            const float t_after = time[GetTimeIndex(i)][j_cross];
+            const float v_before = channel[i][j_cross-1];
+            const float v_after = channel[i][j_cross];
+            if (v_before != v_after) {
+              threshold_crossing_time = t_before +
+                (t_after - t_before)*(thr - v_before)/(v_after - v_before);
+            }
+          }
 
           if( config->channels[i].algorithm.Contains("IL")) {
             unsigned int j_aux = j_close + 1;
@@ -655,28 +728,100 @@ void DatAnalyzer::Analyze(){
               span_j = max((unsigned int) n, span_j);
             }
 
-            if( j_close < span_j || j_close + span_j >= NUM_SAMPLES ) {
-              if (verbose) {
-                cout << Form("[WARNING] evt %d ch %d:  Short span around the closest point. Analytical fit not performed.", i_evt, i) << endl;
-                cout << j_close << "  " << span_j << "  " << thr << endl;
-              }
-              continue;
-            }
-
-            float* coeff;
             int N_add = 1;
             if (span_j + N_add + j_close < j_90_pre) {
               N_add++;
             }
-            AnalyticalPolinomialSolver( 2*span_j + N_add , &(channel[i][j_close - span_j]), &(time[GetTimeIndex(i)][j_close - span_j]), n, coeff);
-            
-            var[Form("LP%d_%dmV", n, (int)(fabs(thr)))][i] = PolyEval(thr, coeff, n) + myTimeOffset;
+            unsigned int fit_first = j_close >= span_j ?
+              j_close - span_j : 0;
+            unsigned int fit_last = j_close + span_j + N_add - 1;
+            bool fit_window_valid =
+              j_close >= span_j && fit_last < NUM_SAMPLES;
 
-            if(draw_debug_pulses) {
-              coeff_poly_fit.push_back(coeff);
-              poly_bounds.push_back(pair<int,int>(j_close-span_j, j_close+span_j+N_add-1));
+            /******************************************************************
+            // MONOTONIC FIXED-THRESHOLD FIT-WINDOW OVERRIDE
+            // Comment out this block to restore the dynamic window above.
+            // It keeps only a consecutive negative-going portion of the edge,
+            // capped at 5/7/9 points for LP1/LP2/LP3, respectively.
+            ******************************************************************/
+            {
+              unsigned int monotonic_first = j_close;
+              unsigned int monotonic_last = j_close;
+
+              while (monotonic_first > j_start &&
+                     channel[i][monotonic_first-1] >
+                     channel[i][monotonic_first]) {
+                monotonic_first--;
+              }
+              while (monotonic_last < idx_min &&
+                     monotonic_last + 1 < NUM_SAMPLES &&
+                     channel[i][monotonic_last+1] <
+                     channel[i][monotonic_last]) {
+                monotonic_last++;
+              }
+
+              const unsigned int points_per_side = n + 1;
+              unsigned int take_left =
+                min(points_per_side, j_close - monotonic_first);
+              unsigned int take_right =
+                min(points_per_side, monotonic_last - j_close);
+              const unsigned int target_points = 2*points_per_side + 1;
+
+              // If one side is short, use additional monotonic points from the
+              // other side while retaining the requested maximum window size.
+              while (take_left + take_right + 1 < target_points) {
+                if (take_left < j_close - monotonic_first) {
+                  take_left++;
+                }
+                else if (take_right < monotonic_last - j_close) {
+                  take_right++;
+                }
+                else {
+                  break;
+                }
+              }
+
+              fit_first = j_close - take_left;
+              fit_last = j_close + take_right;
+              fit_window_valid = fit_last >= fit_first &&
+                fit_last < NUM_SAMPLES &&
+                fit_last - fit_first + 1 >= (unsigned int)(n + 1);
             }
-            else delete [] coeff;
+
+            if (!fit_window_valid) {
+              var[Form("LP%d_%dmV", n, (int)(fabs(thr)))][i] =
+                threshold_crossing_time + myTimeOffset;
+              if (verbose) {
+                cout << Form("[WARNING] evt %d ch %d: threshold %.2f mV "
+                             "does not have enough consecutive monotonic "
+                             "samples for LP%d; using the interpolated "
+                             "threshold crossing.", i_evt, i, thr, n) << endl;
+              }
+              continue;
+            }
+
+            const unsigned int N_fit_points = fit_last - fit_first + 1;
+            float* coeff;
+            AnalyticalPolinomialSolver(N_fit_points, &(channel[i][fit_first]),
+                                       &(time[GetTimeIndex(i)][fit_first]),
+                                       n, coeff);
+
+            var[Form("LP%d_%dmV", n, (int)(fabs(thr)))][i] =
+              PolyEval(thr, coeff, n) + myTimeOffset;
+
+            if (draw_debug_pulses) {
+              coeff_poly_fit.push_back(coeff);
+              poly_bounds.push_back(pair<int,int>(fit_first, fit_last));
+              poly_view_bounds.push_back(pair<int,int>(
+                fit_first >= 4 ? fit_first - 4 : 0,
+                min(fit_last + 4, NUM_SAMPLES - 1)));
+              poly_degrees.push_back(n);
+              poly_labels.push_back(Form("LP%d monotonic local fit at %dmV", n,
+                                         (int)(fabs(thr))));
+            }
+            else {
+              delete [] coeff;
+            }
           }
         }
       }
@@ -749,205 +894,121 @@ void DatAnalyzer::Analyze(){
       } //end if algorithm.Contains("TOT")
     }
 
-    /*********************************************
-    // ===================  Draw plot of the pulse
-    **********************************************/
-    if(draw_debug_pulses) {
-
+    /******************************************************************
+    // DEBUG PULSE/FIT PANELS
+    // Comment out this single block to disable the debug visualization.
+    ******************************************************************/
+    if (draw_debug_pulses) {
       cout << "========= Event: " << i_evt << " - ch: " << i << endl;
 
-      TCanvas* c =  new TCanvas("c_"+name, "c_"+name, 1600, 600);
-      c->Divide(2);
+      const unsigned int n_panels = 1 + coeff_poly_fit.size();
+      const unsigned int n_columns = (unsigned int)ceil(sqrt((double)n_panels));
+      const unsigned int n_rows = (n_panels + n_columns - 1)/n_columns;
+      TCanvas* c = new TCanvas("c_"+name, "c_"+name,
+                               500*n_columns, 350*n_rows);
+      c->Divide(n_columns, n_rows);
 
-      TLine* line = new TLine();
-
-      // ---------- All range plot
+      // Panel 1: pulse without an overlaid fit.
       c->cd(1);
-      c->SetGrid();
-      // Draw pulse
-      pulse->SetMarkerStyle(4);
-      pulse->SetMarkerSize(0.5);
-      pulse->GetYaxis()->SetTitle("Amplitude [mV]");
-      pulse->GetXaxis()->SetTitle("Time [ns]");
-      pulse->Draw("APE1");
-      // Draw baseline
-      line->SetLineWidth(1);
-      line->SetLineColor(46);
-      line->SetLineStyle(7);
-      line->DrawLine(time[GetTimeIndex(i)][0], 0, time[GetTimeIndex(i)][NUM_SAMPLES-1], 0);
-      line->SetLineStyle(1);
-      line->DrawLine(time[GetTimeIndex(i)][bl_st_idx], 0, time[GetTimeIndex(i)][bl_st_idx+bl_length], 0);
-      line->SetLineColor(47);
-      line->DrawLine(time[GetTimeIndex(i)][0], var["baseline_RMS"][i], time[GetTimeIndex(i)][NUM_SAMPLES-1], var["baseline_RMS"][i]);
-      line->DrawLine(time[GetTimeIndex(i)][0], -var["baseline_RMS"][i], time[GetTimeIndex(i)][NUM_SAMPLES-1], -var["baseline_RMS"][i]);
+      gPad->SetGrid();
+      TGraphErrors* raw_pulse =
+        (TGraphErrors*)pulse->Clone(Form("raw_%s", name.Data()));
+      raw_pulse->SetTitle("Pulse (no fit)");
+      raw_pulse->SetMarkerStyle(4);
+      raw_pulse->SetMarkerSize(0.5);
+      raw_pulse->GetXaxis()->SetTitle("Time [ns]");
+      raw_pulse->GetYaxis()->SetTitle("Amplitude [mV]");
+      raw_pulse->Draw("APE1");
 
-      // Draw peak
-      line->SetLineColor(8);
-      line->SetLineStyle(4);
-      line->DrawLine(time[GetTimeIndex(i)][0], amp, var["t_peak"][i], amp);
-      line->DrawLine(var["t_peak"][i], 0, var["t_peak"][i], amp);
+      // Remaining panels: a fresh pulse copy with exactly one fit overlaid.
+      for (unsigned int fit_idx = 0; fit_idx < coeff_poly_fit.size(); fit_idx++) {
+        c->cd(fit_idx + 2);
+        gPad->SetGrid();
 
-      // Draw 10% and 90% lines;
-      TLine* line_lvs = new TLine();
-      line_lvs->SetLineWidth(1);
-      line_lvs->SetLineColor(4);
-      line_lvs->DrawLine(time[GetTimeIndex(i)][0], 0.1*amp, time[GetTimeIndex(i)][NUM_SAMPLES-1], 0.1*amp);
-      line_lvs->DrawLine(time[GetTimeIndex(i)][0], 0.9*amp, time[GetTimeIndex(i)][NUM_SAMPLES-1], 0.9*amp);
-      // Draw constant fractions lines
-      line_lvs->SetLineColor(38);
-      line_lvs->SetLineStyle(10);
-      for(auto f : config->constant_fraction) {
-        line_lvs->DrawLine(time[GetTimeIndex(i)][0], f*amp, time[GetTimeIndex(i)][NUM_SAMPLES-1], f*amp);
-      }
-      // Draw constant threshold lines
-      line_lvs->SetLineColor(28);
-      for(auto thr : config->constant_threshold) {
-        cout<<thr<<endl;
-        line_lvs->DrawLine(time[GetTimeIndex(i)][0], thr, time[GetTimeIndex(i)][NUM_SAMPLES-1], thr);
-      }
+        TGraphErrors* panel_pulse =
+          (TGraphErrors*)pulse->Clone(Form("pulse_fit_%u_%s", fit_idx, name.Data()));
+        panel_pulse->SetTitle(poly_labels[fit_idx]);
+        panel_pulse->SetMarkerStyle(4);
+        panel_pulse->SetMarkerSize(0.5);
+        panel_pulse->GetXaxis()->SetTitle("Time [ns]");
+        panel_pulse->GetYaxis()->SetTitle("Amplitude [mV]");
+        panel_pulse->Draw("APE1");
 
+        const unsigned int curve_first = poly_bounds[fit_idx].first;
+        const unsigned int curve_last = poly_bounds[fit_idx].second;
+        const unsigned int view_first = poly_view_bounds[fit_idx].first;
+        const unsigned int view_last = poly_view_bounds[fit_idx].second;
+        panel_pulse->GetXaxis()->SetRangeUser(time[GetTimeIndex(i)][view_first],
+                                              time[GetTimeIndex(i)][view_last]);
 
-      // Draw integral area
-      int N_tot_integral = j_area_post-j_area_pre;
-      if( N_tot_integral > 0 ) {
-        vector<float> aux_time = {time[GetTimeIndex(i)][j_area_pre]};
-        vector<float> aux_volt = {0};
-        for(unsigned int j = j_area_pre; j <= j_area_post; j++) {
-          aux_time.push_back(time[GetTimeIndex(i)][j]);
-          aux_volt.push_back(channel[i][j]);
+        float edge_min = channel[i][view_first];
+        float edge_max = channel[i][view_first];
+        for (unsigned int sample = view_first + 1; sample <= view_last; sample++) {
+          edge_min = min(edge_min, channel[i][sample]);
+          edge_max = max(edge_max, channel[i][sample]);
         }
-        aux_time.push_back(time[GetTimeIndex(i)][j_area_post]);
-        aux_volt.push_back(0);
-        TGraph * integral_pulse = new TGraph(aux_time.size(), &(aux_time[0]), &(aux_volt[0]));
-        integral_pulse->SetFillColor(40);
-        integral_pulse->SetFillStyle(3144);
-        integral_pulse->Draw("FC");
-        TText* t_int = new TText(var["t_peak"][i], amp, Form("Int = %1.2e (%1.2e) pC", var["integral"][i], var["intfull"][i]));
-        t_int->SetTextAlign(kHAlignLeft+kVAlignBottom);
-        t_int->Draw();
+        const float amplitude_margin = max(0.1f*(edge_max - edge_min), 0.01f);
+        panel_pulse->GetYaxis()->SetRangeUser(edge_min - amplitude_margin,
+                                              edge_max + amplitude_margin);
 
-        // Draw 90% and 10% pre and post points
-        TGraph* gr_pre_post = new TGraph(4);
-        gr_pre_post->SetPoint(0, time[GetTimeIndex(i)][j_10_pre], channel[i][j_10_pre]);
-        gr_pre_post->SetPoint(1, time[GetTimeIndex(i)][j_90_pre], channel[i][j_90_pre]);
-        gr_pre_post->SetPoint(2, time[GetTimeIndex(i)][j_10_post], channel[i][j_10_post]);
-        gr_pre_post->SetPoint(3, time[GetTimeIndex(i)][j_90_post], channel[i][j_90_post]);
-        gr_pre_post->SetMarkerColor(4);
-        gr_pre_post->Draw("P*");
-
-
-        // ---------- Rising edge only inverted!! -----
-        c->cd(2);
-        c->SetGrid();
-
-        if( config->channels[i].algorithm.Contains("Re") ) {
-          unsigned int i_min = GetIdxFirstCross(config->channels[i].re_bounds[0]*amp, channel[i], idx_min, -1);
-          unsigned int i_max = GetIdxFirstCross(config->channels[i].re_bounds[1]*amp, channel[i], i_min, +1);
-          float y[2], x[2];
-          x[0] = channel[i][i_min];
-          x[1] = channel[i][i_max];
-          y[0] = (channel[i][i_min] - Re_b)/Re_slope;
-          y[1] = (channel[i][i_max] - Re_b)/Re_slope;
-
-          TGraph* gr_Re = new TGraph(2, x, y);
-
-          gr_Re->SetLineColor(46);
-          gr_Re->SetLineWidth(1);
-          gr_Re->SetLineStyle(7);
-          gr_Re->Draw("CP");
+        const unsigned int n_curve_points = 200;
+        vector<float> fit_time(n_curve_points);
+        vector<float> fit_voltage(n_curve_points);
+        // The voltage can be non-monotonic inside a local fit window. Use the
+        // extrema of all fitted samples rather than only the endpoint values,
+        // otherwise the displayed curve can be truncated even when the fit is
+        // valid.
+        float fit_voltage_min = channel[i][curve_first];
+        float fit_voltage_max = channel[i][curve_first];
+        for (unsigned int sample = curve_first + 1; sample <= curve_last; sample++) {
+          fit_voltage_min = min(fit_voltage_min, channel[i][sample]);
+          fit_voltage_max = max(fit_voltage_max, channel[i][sample]);
         }
 
-        unsigned int j_begin = j_10_pre - 6;
-        unsigned int j_span = j_90_pre - j_10_pre + 10;
-        TGraphErrors* inv_pulse = new TGraphErrors(j_span, &(channel[i][j_begin]), &(time[GetTimeIndex(i)][j_begin]), yerr);
-        inv_pulse->SetNameTitle("g_inv"+name, "g_inv"+name);
-        inv_pulse->SetMarkerStyle(5);
-        inv_pulse->GetXaxis()->SetTitle("Amplitude [mV]");
-        inv_pulse->GetYaxis()->SetTitle("Time [ns]");
-        inv_pulse->Draw("APE1");
-
-        vector<float> t_WS;
-        vector<float> c_WS;
-        float overstep = 6;
-        for(unsigned int jj = j_begin; jj < j_begin + j_span; jj++) {
-          for(unsigned int kk = 0; kk < overstep; kk++) {
-            float tt = time[GetTimeIndex(i)][jj] + (time[GetTimeIndex(i)][jj+1] - time[GetTimeIndex(i)][jj]) * kk/overstep;
-            float cc = WSInterp(tt, NUM_SAMPLES, time[GetTimeIndex(i)], channel[i]);
-
-            t_WS.push_back(tt);
-            c_WS.push_back(cc);
-          }
-        }
-        TGraph* inv_pulse_WS = new TGraph(t_WS.size(), &(c_WS[0]), &(t_WS[0]));
-        inv_pulse_WS->SetMarkerStyle(7);
-        inv_pulse_WS->SetMarkerColor(2);
-        // inv_pulse_WS->Draw("P");
-
-        TGraph* gr_inv_pre_post = new TGraph(2);
-        gr_inv_pre_post->SetPoint(0, channel[i][j_10_pre], time[GetTimeIndex(i)][j_10_pre]);
-        gr_inv_pre_post->SetPoint(1, channel[i][j_90_pre], time[GetTimeIndex(i)][j_90_pre]);
-        gr_inv_pre_post->SetMarkerColor(4);
-        gr_inv_pre_post->Draw("P*");
-
-        // -------------- If exist, draw local polinomial fit
-        unsigned int count = 0;
-        vector<int> frac_colors = {2, 6, 8, 5, 40, 46, 4, 9, 12};
-        while(frac_colors.size() < config->constant_fraction.size() + config->constant_threshold.size()) {
-          frac_colors.push_back(2);
+        for (unsigned int point = 0; point < n_curve_points; point++) {
+          const float fraction = point/(float)(n_curve_points - 1);
+          fit_voltage[point] =
+            fit_voltage_min + fraction*(fit_voltage_max - fit_voltage_min);
+          fit_time[point] = PolyEval(fit_voltage[point],
+                                    coeff_poly_fit[fit_idx],
+                                    poly_degrees[fit_idx]);
         }
 
-        for( unsigned int kk = 0; kk < config->constant_fraction.size(); kk++) {
-          float f = config->constant_fraction[kk];
-          //cout<<f<<endl;
-          if (kk!=config->constant_fraction.size()-1){
-            //cout<<f<<endl;
-            continue;
-          }
-          //cout<<"plotted"<<endl;
-          line_lvs->SetLineColor(frac_colors[kk]);
-          line_lvs->DrawLine(amp*f, time[GetTimeIndex(i)][j_begin], amp*f, time[GetTimeIndex(i)][j_90_pre + 3]);
-          for(auto n : config->channels[i].PL_deg) {
-            vector<float> polyval;
-            for(unsigned int j = poly_bounds[count].first; j <= poly_bounds[count].second; j++) {
-              polyval.push_back(PolyEval(channel[i][j], coeff_poly_fit[count], n));
-            }
+        TGraph* fit_curve =
+          new TGraph(n_curve_points, &(fit_time[0]), &(fit_voltage[0]));
+        fit_curve->SetLineColor(kRed);
+        fit_curve->SetLineWidth(3);
+        fit_curve->Draw("L SAME");
 
-            TGraph* g_poly = new TGraph(polyval.size(), &(channel[i][poly_bounds[count].first]), &(polyval[0]) );
-            g_poly->SetLineColor(frac_colors[kk]);
-            g_poly->SetLineWidth(2);
-            g_poly->SetLineStyle(7);
-            g_poly->Draw("C");
-
-            count++;
-          }
+        // The analytical solver is unweighted, so this is the residual sum
+        // of squares in time divided by the number of degrees of freedom.
+        double chi2 = 0.;
+        const unsigned int n_fit_points = curve_last - curve_first + 1;
+        for (unsigned int sample = curve_first; sample <= curve_last; sample++) {
+          const double residual = time[GetTimeIndex(i)][sample] -
+            PolyEval(channel[i][sample], coeff_poly_fit[fit_idx],
+                     poly_degrees[fit_idx]);
+          chi2 += residual*residual;
         }
-
-        for( unsigned int kk = 0; kk < config->constant_threshold.size(); kk++) {
-          continue;
-          float thr = config->constant_threshold[kk];
-          if (thr < amp ) continue;
-          line_lvs->SetLineColor(frac_colors[kk + config->constant_fraction.size()]);
-          line_lvs->DrawLine(thr, time[GetTimeIndex(i)][j_begin], thr, time[GetTimeIndex(i)][j_90_pre + 3]);
-          for(auto n : config->channels[i].PL_deg) {
-            vector<float> polyval;
-            for(unsigned int j = poly_bounds[count].first; j <= poly_bounds[count].second; j++) {
-              polyval.push_back(PolyEval(channel[i][j], coeff_poly_fit[count], n));
-            }
-
-            TGraph* g_poly = new TGraph(polyval.size(), &(channel[i][poly_bounds[count].first]), &(polyval[0]) );
-            g_poly->SetLineColor(frac_colors[kk + config->constant_fraction.size()]);
-            g_poly->SetLineWidth(2);
-            g_poly->SetLineStyle(7);
-            g_poly->Draw("C");
-
-            count++;
-          }
+        const int ndf = (int)n_fit_points - (poly_degrees[fit_idx] + 1);
+        TLatex* chi2_label = new TLatex();
+        chi2_label->SetNDC();
+        chi2_label->SetTextSize(0.045);
+        chi2_label->SetTextColor(kRed + 1);
+        if (ndf > 0) {
+          chi2_label->DrawLatex(0.14, 0.84,
+            Form("#chi^{2}/NDF = %.3g ns^{2}", chi2/ndf));
+        }
+        else {
+          chi2_label->DrawLatex(0.14, 0.84, "#chi^{2}/NDF = undefined");
         }
       }
 
-      c->SetGrid();
       c->SaveAs("./pulses_imgs/"+name+img_format);
       delete c;
+
+
+      for (auto coeff : coeff_poly_fit) delete [] coeff;
     }
 
 
@@ -1032,7 +1093,11 @@ void DatAnalyzer::RunEventsLoop() {
       for(int i_aux = start_evt; i_aux < n_evt_tree && (N_evts==0 || i_aux<N_evts); i_aux++){
         //just to see one event
         //if (!(i_aux==1954 || i_aux==1633 || i_aux==414)){
-        // if(!(i_aux==414||i_aux==1633||i_aux==1954||i_aux==2273||i_aux==3258||i_aux==4465||i_aux==4466||i_aux==5817||i_aux==3203)){
+        // if(!(i_aux==102 || i_aux==414||i_aux==1633||i_aux==1954||i_aux==2273||i_aux==3258||i_aux==4465||i_aux==4466||i_aux==5817||i_aux==1112 || i_aux==1576 || i_aux==2065 ||i_aux==3492)){
+        //   continue;
+        // }
+        //events to check for 5 nm 1um p8 SNSPD test beam
+        // if(!(i_aux==714||i_aux==795||i_aux==2046||i_aux==2137||i_aux==2215||i_aux==2369||i_aux==2557||i_aux==2881||i_aux==5123)){
         //   continue;
         // }
         //}

@@ -65,6 +65,12 @@ class NetScopeStandaloneAnalyzer : public DatAnalyzer {
     void Analyze();
     
   protected:
+    static constexpr unsigned int DECIMATION_FACTOR = 1;
+
+    unsigned int raw_num_samples = 0;
+    vector<float> raw_channel;
+    vector<float> raw_time;
+
     vector<int> active_ch;
     // Set by command line arguments or default
     TString pixel_input_file_path;

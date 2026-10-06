@@ -9,7 +9,8 @@ DRSDat2Root
 DRSclDat2Root
 ETL_ASIC_Dat2Root
 data/
-
+scope1/
+scope2/
 NetScopeDat2Root
 NetScopeStandaloneDat2Root
 pulses_imgs/pulse_event*.png

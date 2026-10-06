@@ -21,6 +21,7 @@
 #include "TGraphErrors.h"
 #include "TCanvas.h"
 #include "TLine.h"
+#include "TLatex.h"
 #include "TVectorF.h"
 #include "TMatrixF.h"
 #include <TComplex.h>

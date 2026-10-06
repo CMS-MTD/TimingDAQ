@@ -1,5 +1,7 @@
 #include "NetScopeStandaloneAnalyzer.hh"
 
+#include <algorithm>
+
 using namespace std;
 
 inline bool exists_test2 (const std::string& name) {
@@ -58,19 +60,25 @@ void NetScopeStandaloneAnalyzer::GetDim(TTree* const tree, const std::string& va
 
 void NetScopeStandaloneAnalyzer::InitLoop(){
   cout<<"Define numChannels, numTime, and numSamples from input TTree"<<endl;
-  unsigned int numChannels, numTime, numSamples;
-  GetDim(tree_in, "channel", numChannels, numSamples);
-  GetDim(tree_in, "time", numTime, numSamples);
+  unsigned int numChannels, numTime, time_num_samples;
+  GetDim(tree_in, "channel", numChannels, raw_num_samples);
+  GetDim(tree_in, "time", numTime, time_num_samples);
+  if (time_num_samples != raw_num_samples) {
+    cerr << "[ERROR]: Channel and time arrays have different sample counts" << endl;
+    exit(1);
+  }
   setNumChannels(numChannels);
   setNumTimes(numTime);
-  setNumSamples(numSamples);
+  setNumSamples(raw_num_samples / DECIMATION_FACTOR);
+  raw_channel.resize(numChannels * raw_num_samples);
+  raw_time.resize(numTime * raw_num_samples);
   for(unsigned int i = 0; i < NUM_CHANNELS; i++){active_ch.emplace_back(i);}
 
   DatAnalyzer::InitLoop();
   cout<<"Finished datanalyzer InitLoop"<<endl;
   tree_in->SetBranchAddress("i_evt", &i_evt);
-  tree_in->SetBranchAddress("channel", &(channel[0][0]));
-  tree_in->SetBranchAddress("time", &(time[0][0]));
+  tree_in->SetBranchAddress("channel", raw_channel.data());
+  tree_in->SetBranchAddress("time", raw_time.data());
   tree_in->SetBranchAddress("timeoffsets", &(timeOffset[0]));
 
   tree->Branch("timeoffsets", &(timeOffset[0]), Form("timeoffsets[%d]/F", NUM_CHANNELS));
@@ -132,6 +140,34 @@ int NetScopeStandaloneAnalyzer::GetChannelsMeasurement(int i_aux) {
   //std::cout << "NNNN 3: " << tree_in->GetEntries() << std::endl;
   //cout<<"i_aux "<<i_aux<<endl;
   tree_in->GetEntry(i_aux);
+
+  if (DECIMATION_FACTOR == 1) {
+    std::copy(raw_channel.begin(), raw_channel.end(), AUX_channel);
+    std::copy(raw_time.begin(), raw_time.end(), AUX_time);
+  }
+  else {
+    for (unsigned int ch = 0; ch < NUM_CHANNELS; ch++) {
+      for (unsigned int i = 0; i < NUM_SAMPLES; i++) {
+        float sum = 0;
+        for (unsigned int j = 0; j < DECIMATION_FACTOR; j++) {
+          const unsigned int raw_index = ch * raw_num_samples + i * DECIMATION_FACTOR + j;
+          sum += raw_channel[raw_index];
+        }
+        channel[ch][i] = sum / DECIMATION_FACTOR;
+      }
+    }
+
+    for (unsigned int t = 0; t < NUM_TIMES; t++) {
+      for (unsigned int i = 0; i < NUM_SAMPLES; i++) {
+        float sum = 0;
+        for (unsigned int j = 0; j < DECIMATION_FACTOR; j++) {
+          const unsigned int raw_index = t * raw_num_samples + i * DECIMATION_FACTOR + j;
+          sum += raw_time[raw_index];
+        }
+        time[t][i] = sum / DECIMATION_FACTOR;
+      }
+    }
+  }
 //  cout<<"Got entry"<<endl;
 
   return 0;

@@ -12,13 +12,13 @@ chmod 755 add_branches_TimingDAQ.py
 #mkdir scope${ScopeNum}
 cd scope${ScopeNum}
 #cp ../converted_run$1.root .
-for i in {5024..5024}; do
+for i in {800..800}; do
     cp /eos/uscms/store/group/cmstestbeam/2026_05_SNSPD/LecroyScope/RecoData/ConversionRECO/Scope$3/converted_run$i.root .
     cp /eos/uscms/store/group/cmstestbeam/2026_05_SNSPD/Tracks/RecoData/v$2/Run${i}_CMSTiming_FastTriggerStream_converted.root .
     #cp /eos/uscms//store/group/cmstestbeam/${BASE}//ConfigInfo/Runs/info_$1.json .
     #ls
     echo converted_run$i.root
-    ../NetScopeStandaloneDat2Root --input_file=converted_run$i.root --pixel_input_file=Run$1_CMSTiming_FastTriggerStream_converted.root  --config=../config/${BASE}/LecroyScope_Scope${ScopeNum}_v$2.config --output_file=out_run${i}_info.root  --correctForTimeOffsets=true #--draw_debug_pulses
+    ../NetScopeStandaloneDat2Root --input_file=converted_run$i.root --pixel_input_file=Run$1_CMSTiming_FastTriggerStream_converted.root  --config=../config/${BASE}/LecroyScope_Scope${ScopeNum}_v12.config --output_file=out_run${i}_info.root  --correctForTimeOffsets=true --save_meas #--draw_debug_pulses
     #python3 ../add_branches_TimingDAQ.py $1 9999 out_run$1.root
     #ls
     #eosmkdir /store/group/cmstestbeam/${BASE}/LecroyScope/RecoData/TimingDAQRECO/RecoWithTracks/$2/Scope${ScopeNum}/
